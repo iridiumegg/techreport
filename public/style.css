@@ -1002,7 +1002,7 @@ input:-webkit-autofill:focus {
   background: linear-gradient(135deg, var(--green-700) 0%, #1a3a75 100%);
   box-shadow: 0 3px 10px rgba(30,64,128,.35);
 }
-.btn-ai svg { color: #fbbf24; }
+.btn-ai svg { color: #D97757; }
 
 /* ─── Summary Modal ──────────────────────────────────────────────────────── */
 .modal--wide {
