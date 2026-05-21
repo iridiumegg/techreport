@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ES2 Built | Tech Daily Reports</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <header class="header">
+    <div class="header-inner">
+      <div class="brand">
+        <div class="brand-badge">ES2</div>
+        <div class="brand-text">
+          <span class="brand-name">ES2 BUILT</span>
+          <span class="brand-tagline">Tech Daily Reports</span>
+        </div>
+      </div>
+      <nav class="nav">
+        <button class="nav-btn active" data-tab="submit">
+          <svg viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>
+          Submit Report
+        </button>
+        <button class="nav-btn" data-tab="reports">
+          <svg viewBox="0 0 20 20" fill="currentColor"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"/></svg>
+          View Reports
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main">
+
+    <!-- Submit Report -->
+    <section id="tab-submit" class="tab-content active">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">Daily Report</h2>
+            <p class="card-subtitle">Complete all required fields and submit your daily work report.</p>
+          </div>
+          <div class="date-badge" id="today-badge"></div>
+        </div>
+
+        <form id="report-form" class="form" novalidate>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="tech-name">Technician Name <span class="required">*</span></label>
+              <input type="text" id="tech-name" placeholder="Enter your full name" autocomplete="name" />
+            </div>
+            <div class="form-group">
+              <label for="report-date">Date <span class="required">*</span></label>
+              <input type="date" id="report-date" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group form-group--grow">
+              <label for="job-select">Job Site <span class="required">*</span></label>
+              <select id="job-select">
+                <option value="">— Select a Job —</option>
+              </select>
+            </div>
+            <div class="form-group form-group--fixed">
+              <label for="hours-worked">Hours Worked</label>
+              <input type="number" id="hours-worked" placeholder="0.0" min="0" max="24" step="0.5" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="notes">Work Description / Notes <span class="required">*</span></label>
+            <textarea id="notes" rows="6" placeholder="Describe the work completed today — tasks performed, issues encountered, materials used, progress made, etc."></textarea>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" id="clear-btn" class="btn btn-ghost">Clear Form</button>
+            <button type="submit" class="btn btn-primary">
+              <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+              Submit Report
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- View Reports -->
+    <section id="tab-reports" class="tab-content">
+      <div class="card">
+        <div class="card-header card-header--reports">
+          <div>
+            <h2 class="card-title">Submitted Reports</h2>
+            <p class="card-subtitle">Browse and filter all technician daily reports.</p>
+          </div>
+          <div class="filters">
+            <input type="text" id="filter-tech" placeholder="Technician name..." class="filter-input" />
+            <input type="date" id="filter-date" class="filter-input" />
+            <select id="filter-job" class="filter-input">
+              <option value="">All Jobs</option>
+            </select>
+            <button class="btn btn-outline" id="filter-btn">
+              <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.553.894l-4 2A1 1 0 016 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd"/></svg>
+              Filter
+            </button>
+            <button class="btn btn-ghost" id="clear-filter-btn">Clear</button>
+          </div>
+        </div>
+
+        <div id="reports-container">
+          <div class="loading-state">
+            <div class="spinner"></div>
+            <span>Loading reports…</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <div id="toast" class="toast" role="alert" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
