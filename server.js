@@ -366,27 +366,6 @@ app.delete('/api/users/:id', requireAdmin, async (req, res) => {
   }
 });
 
-app.post('/api/users/:id/test-sms', requireAdmin, async (req, res) => {
-  if (!smsEnabled) return res.status(503).json({ error: 'SMS is not configured' });
-  try {
-    const { rows } = await pool.query('SELECT name, phone FROM users WHERE id = $1', [req.params.id]);
-    const user = rows[0];
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    if (!user.phone) return res.status(400).json({ error: 'This user has no phone number set' });
-    const to = normalizePhone(user.phone);
-    if (!to) return res.status(400).json({ error: 'Phone number format is invalid' });
-    await twilioClient.messages.create({
-      body: `Hi ${user.name}, this is a test message from ES2 Built Tech Daily Reports. SMS notifications are working correctly!`,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      to,
-    });
-    res.json({ success: true, to });
-  } catch (err) {
-    console.error('Test SMS error:', err);
-    res.status(500).json({ error: err.message || 'Failed to send test SMS' });
-  }
-});
-
 // ─── Password change (self) ───────────────────────────────────────────────────
 
 app.post('/api/me/password', async (req, res) => {
