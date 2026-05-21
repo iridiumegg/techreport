@@ -129,99 +129,112 @@
 
     <!-- Admin Panel -->
     <section id="tab-admin" class="tab-content">
-      <div class="admin-grid">
+      <div class="card">
 
-        <!-- Jobs management -->
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <h2 class="card-title">Job Sites</h2>
-              <p class="card-subtitle">Manage the job list available to technicians.</p>
-            </div>
-          </div>
-          <div class="admin-body">
-            <div id="jobs-list"></div>
-            <div class="admin-add-form">
-              <h3 class="admin-section-title">Add New Job</h3>
-              <div class="form-row">
-                <div class="form-group">
-                  <label for="new-job-number">Job Number</label>
-                  <input type="text" id="new-job-number" placeholder="e.g. J-1009" />
-                </div>
-                <div class="form-group form-group--grow">
-                  <label for="new-job-name">Job Name</label>
-                  <input type="text" id="new-job-name" placeholder="e.g. Office Renovation — 5th Ave" />
-                </div>
-              </div>
-              <div class="form-actions">
-                <button class="btn btn-primary" id="add-job-btn">Add Job</button>
-              </div>
-            </div>
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">Admin Panel</h2>
+            <p class="card-subtitle">Manage job sites, users, and account settings.</p>
           </div>
         </div>
 
-        <!-- Users management -->
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <h2 class="card-title">Users</h2>
-              <p class="card-subtitle">Manage technician and admin accounts.</p>
+        <!-- Admin sub-nav -->
+        <div class="admin-subnav">
+          <button class="admin-subnav-btn active" data-admin-tab="jobs">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a1 1 0 110 2h-3a1 1 0 01-1-1v-2a1 1 0 00-1-1H9a1 1 0 00-1 1v2a1 1 0 01-1 1H4a1 1 0 110-2V4zm3 1h2v2H7V5zm2 4H7v2h2V9zm2-4h2v2h-2V5zm2 4h-2v2h2V9z" clip-rule="evenodd"/></svg>
+            Job Sites
+          </button>
+          <button class="admin-subnav-btn" data-admin-tab="users">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/></svg>
+            Users
+          </button>
+          <button class="admin-subnav-btn" data-admin-tab="settings">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/></svg>
+            Settings
+          </button>
+        </div>
+
+        <!-- Jobs sub-tab -->
+        <div id="admin-tab-jobs" class="admin-tab-content active">
+          <div class="admin-section">
+            <h3 class="admin-section-title">Add New Job</h3>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="new-job-number">Job Number</label>
+                <input type="text" id="new-job-number" placeholder="e.g. J-1009" />
+              </div>
+              <div class="form-group form-group--grow">
+                <label for="new-job-name">Job Name</label>
+                <input type="text" id="new-job-name" placeholder="e.g. Office Renovation" />
+              </div>
+            </div>
+            <div class="admin-actions">
+              <button class="btn btn-primary" id="add-job-btn">Add Job</button>
             </div>
           </div>
-          <div class="admin-body">
-            <div id="users-list"></div>
-            <div class="admin-add-form">
-              <h3 class="admin-section-title">Add New User</h3>
-              <div class="form-row">
-                <div class="form-group">
-                  <label for="new-user-name">Full Name</label>
-                  <input type="text" id="new-user-name" placeholder="e.g. John Smith" />
-                </div>
-                <div class="form-group">
-                  <label for="new-username">Username</label>
-                  <input type="text" id="new-username" placeholder="e.g. jsmith" autocomplete="off" />
-                </div>
+          <div class="admin-list-section">
+            <div id="jobs-list"></div>
+          </div>
+        </div>
+
+        <!-- Users sub-tab -->
+        <div id="admin-tab-users" class="admin-tab-content">
+          <div class="admin-section">
+            <h3 class="admin-section-title">Add New User</h3>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="new-user-name">Full Name</label>
+                <input type="text" id="new-user-name" placeholder="e.g. John Smith" />
               </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label for="new-user-password">Password</label>
-                  <input type="password" id="new-user-password" placeholder="Minimum 6 characters" autocomplete="new-password" />
-                </div>
-                <div class="form-group">
-                  <label for="new-user-role">Role</label>
-                  <select id="new-user-role">
-                    <option value="tech">Technician</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </div>
-              </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label for="new-user-phone">Phone <span class="label-hint">(optional — for SMS reminders)</span></label>
-                  <input type="tel" id="new-user-phone" placeholder="e.g. 555-867-5309" />
-                </div>
-              </div>
-              <div class="form-actions">
-                <button class="btn btn-primary" id="add-user-btn">Add User</button>
+              <div class="form-group">
+                <label for="new-username">Username</label>
+                <input type="text" id="new-username" placeholder="e.g. jsmith" autocomplete="off" />
               </div>
             </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="new-user-password">Password</label>
+                <input type="password" id="new-user-password" placeholder="Minimum 6 characters" autocomplete="new-password" />
+              </div>
+              <div class="form-group">
+                <label for="new-user-role">Role</label>
+                <select id="new-user-role">
+                  <option value="tech">Technician</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="new-user-phone">Phone <span class="label-hint">(optional — for SMS reminders)</span></label>
+                <input type="tel" id="new-user-phone" placeholder="e.g. 555-867-5309" />
+              </div>
+            </div>
+            <div class="admin-actions">
+              <button class="btn btn-primary" id="add-user-btn">Add User</button>
+            </div>
+          </div>
+          <div class="admin-list-section">
+            <div id="users-list"></div>
+          </div>
+        </div>
 
-            <!-- Change own password -->
-            <div class="admin-add-form">
-              <h3 class="admin-section-title">Change My Password</h3>
-              <div class="form-row">
-                <div class="form-group">
-                  <label for="cur-password">Current Password</label>
-                  <input type="password" id="cur-password" autocomplete="current-password" />
-                </div>
-                <div class="form-group">
-                  <label for="new-password">New Password</label>
-                  <input type="password" id="new-password" autocomplete="new-password" />
-                </div>
+        <!-- Settings sub-tab -->
+        <div id="admin-tab-settings" class="admin-tab-content">
+          <div class="admin-section">
+            <h3 class="admin-section-title">Change My Password</h3>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="cur-password">Current Password</label>
+                <input type="password" id="cur-password" autocomplete="current-password" />
               </div>
-              <div class="form-actions">
-                <button class="btn btn-outline" id="change-pw-btn">Change Password</button>
+              <div class="form-group">
+                <label for="new-password">New Password</label>
+                <input type="password" id="new-password" autocomplete="new-password" />
               </div>
+            </div>
+            <div class="admin-actions">
+              <button class="btn btn-outline" id="change-pw-btn">Change Password</button>
             </div>
           </div>
         </div>

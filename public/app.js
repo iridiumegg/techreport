@@ -417,6 +417,14 @@ function clearFilters() {
 
 /* ─── Admin ───────────────────────────────────────────────────────────────── */
 function setupAdmin() {
+  document.querySelectorAll('.admin-subnav-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.admin-subnav-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.admin-tab-content').forEach(t => t.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(`admin-tab-${btn.dataset.adminTab}`).classList.add('active');
+    });
+  });
   document.getElementById('add-job-btn').addEventListener('click', addJob);
   document.getElementById('add-user-btn').addEventListener('click', addUser);
   document.getElementById('change-pw-btn').addEventListener('click', changePassword);
