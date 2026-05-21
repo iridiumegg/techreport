@@ -1,28 +1,64 @@
 /* ─── State ───────────────────────────────────────────────────────────────── */
+let currentUser = null;
 let jobs = [];
 let toastTimer = null;
 
 /* ─── Init ────────────────────────────────────────────────────────────────── */
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadCurrentUser();
+  applyRoleUI();
   setTodayDate();
   setTodayBadge();
   setupTabs();
-  loadJobs().then(() => {
-    populateJobDropdown('job-select');
-    populateJobDropdown('filter-job', true);
-  });
+  setupLogout();
+
+  await loadJobs();
+  populateJobDropdown('job-select');
+  populateJobDropdown('filter-job', true);
 
   document.getElementById('report-form').addEventListener('submit', handleSubmit);
   document.getElementById('clear-btn').addEventListener('click', clearForm);
   document.getElementById('filter-btn').addEventListener('click', loadReports);
   document.getElementById('clear-filter-btn').addEventListener('click', clearFilters);
+
+  if (currentUser?.role === 'admin') setupAdmin();
 });
+
+/* ─── Auth ────────────────────────────────────────────────────────────────── */
+async function loadCurrentUser() {
+  try {
+    const res = await fetch('/api/me');
+    if (res.status === 401) { window.location.href = '/login'; return; }
+    currentUser = await res.json();
+  } catch {
+    window.location.href = '/login';
+  }
+}
+
+function applyRoleUI() {
+  if (!currentUser) return;
+  document.getElementById('header-user-name').textContent = currentUser.name;
+  document.getElementById('tech-name-display').textContent = currentUser.name;
+
+  if (currentUser.role === 'admin') {
+    document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
+    document.querySelectorAll('.tech-only').forEach(el => el.classList.add('hidden'));
+  }
+}
+
+function setupLogout() {
+  document.getElementById('logout-btn').addEventListener('click', async () => {
+    await fetch('/api/logout', { method: 'POST' });
+    window.location.href = '/login';
+  });
+}
 
 /* ─── Date helpers ────────────────────────────────────────────────────────── */
 function todayISO() {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
+function pad(n) { return String(n).padStart(2, '0'); }
 
 function setTodayDate() {
   document.getElementById('report-date').value = todayISO();
@@ -31,20 +67,22 @@ function setTodayDate() {
 function setTodayBadge() {
   const el = document.getElementById('today-badge');
   if (!el) return;
-  const d = new Date();
-  el.textContent = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  el.textContent = new Date().toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+  });
 }
 
 function formatDate(iso) {
   if (!iso) return '';
   const [y, m, d] = iso.split('-');
-  const date = new Date(Number(y), Number(m) - 1, Number(d));
-  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(Number(y), Number(m) - 1, Number(d)).toLocaleDateString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+  });
 }
 
 function formatTimestamp(ts) {
   if (!ts) return '';
-  const d = new Date(ts + (ts.endsWith('Z') ? '' : 'Z'));
+  const d = new Date(ts.endsWith('Z') ? ts : ts + 'Z');
   return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
@@ -58,6 +96,7 @@ function setupTabs() {
       btn.classList.add('active');
       document.getElementById(`tab-${tab}`).classList.add('active');
       if (tab === 'reports') loadReports();
+      if (tab === 'admin')   loadAdminData();
     });
   });
 }
@@ -66,9 +105,9 @@ function setupTabs() {
 async function loadJobs() {
   try {
     const res = await fetch('/api/jobs');
-    if (!res.ok) throw new Error('Failed to load jobs');
+    if (!res.ok) throw new Error();
     jobs = await res.json();
-  } catch (e) {
+  } catch {
     showToast('Could not load job list.', 'error');
   }
 }
@@ -76,9 +115,9 @@ async function loadJobs() {
 function populateJobDropdown(id, includeAll = false) {
   const el = document.getElementById(id);
   if (!el) return;
-  const first = el.options[0];
+  const placeholder = el.options[0].cloneNode(true);
   el.innerHTML = '';
-  el.appendChild(first);
+  el.appendChild(placeholder);
   jobs.forEach(j => {
     const opt = document.createElement('option');
     opt.value = j.id;
@@ -91,39 +130,25 @@ function populateJobDropdown(id, includeAll = false) {
 async function handleSubmit(e) {
   e.preventDefault();
 
-  const fields = {
-    tech_name:    document.getElementById('tech-name').value.trim(),
-    job_id:       document.getElementById('job-select').value,
-    report_date:  document.getElementById('report-date').value,
-    hours_worked: document.getElementById('hours-worked').value,
-    notes:        document.getElementById('notes').value.trim(),
-  };
+  const job_id       = document.getElementById('job-select').value;
+  const report_date  = document.getElementById('report-date').value;
+  const hours_worked = document.getElementById('hours-worked').value;
+  const notes        = document.getElementById('notes').value.trim();
 
-  // Validate
   let valid = true;
-  ['tech-name', 'job-select', 'report-date', 'notes'].forEach(id => {
+  [['job-select', job_id], ['report-date', report_date], ['notes', notes]].forEach(([id, val]) => {
     const el = document.getElementById(id);
-    const val = el.value.trim();
-    if (!val) {
-      el.classList.add('error');
-      valid = false;
-    } else {
-      el.classList.remove('error');
-    }
+    if (!val) { el.classList.add('error'); valid = false; }
+    else       el.classList.remove('error');
   });
   if (!valid) { showToast('Please fill in all required fields.', 'error'); return; }
 
-  const payload = {
-    tech_name:   fields.tech_name,
-    job_id:      fields.job_id,
-    report_date: fields.report_date,
-    notes:       fields.notes,
-  };
-  if (fields.hours_worked) payload.hours_worked = fields.hours_worked;
+  const payload = { job_id, report_date, notes };
+  if (hours_worked) payload.hours_worked = hours_worked;
 
-  const submitBtn = document.querySelector('#report-form .btn-primary');
-  submitBtn.disabled = true;
-  submitBtn.textContent = 'Submitting…';
+  const btn = document.querySelector('#report-form .btn-primary');
+  btn.disabled = true;
+  btn.innerHTML = 'Submitting…';
 
   try {
     const res = await fetch('/api/reports', {
@@ -138,8 +163,8 @@ async function handleSubmit(e) {
   } catch (err) {
     showToast(err.message || 'Failed to submit report.', 'error');
   } finally {
-    submitBtn.disabled = false;
-    submitBtn.innerHTML = `<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> Submit Report`;
+    btn.disabled = false;
+    btn.innerHTML = `<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> Submit Report`;
   }
 }
 
@@ -164,10 +189,9 @@ async function loadReports() {
 
   try {
     const res = await fetch('/api/reports?' + params.toString());
-    if (!res.ok) throw new Error('Failed to load reports');
-    const reports = await res.json();
-    renderReports(reports, container);
-  } catch (err) {
+    if (!res.ok) throw new Error();
+    renderReports(await res.json(), container);
+  } catch {
     container.innerHTML = `
       <div class="error-state">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -194,6 +218,7 @@ function renderReports(reports, container) {
   reports.forEach(r => {
     const card = document.createElement('div');
     card.className = 'report-card';
+    const canDelete = currentUser?.role === 'admin';
     card.innerHTML = `
       <div class="report-card-header">
         <div>
@@ -208,10 +233,12 @@ function renderReports(reports, container) {
       <div class="report-notes">${escHtml(r.notes)}</div>
       <div class="report-card-footer">
         <span class="report-timestamp">Submitted ${formatTimestamp(r.created_at)}</span>
-        <button class="btn btn-danger" data-id="${r.id}">Delete</button>
+        ${canDelete ? `<button class="btn btn-danger" data-id="${r.id}">Delete</button>` : ''}
       </div>
     `;
-    card.querySelector('.btn-danger').addEventListener('click', () => deleteReport(r.id, card));
+    if (canDelete) {
+      card.querySelector('.btn-danger').addEventListener('click', () => deleteReport(r.id, card));
+    }
     container.appendChild(card);
   });
 }
@@ -220,9 +247,9 @@ async function deleteReport(id, cardEl) {
   if (!confirm('Delete this report? This cannot be undone.')) return;
   try {
     const res = await fetch(`/api/reports/${id}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error('Delete failed');
-    cardEl.style.opacity = '0';
+    if (!res.ok) throw new Error();
     cardEl.style.transition = 'opacity .2s';
+    cardEl.style.opacity = '0';
     setTimeout(() => cardEl.remove(), 200);
     showToast('Report deleted.', 'success');
   } catch {
@@ -231,22 +258,180 @@ async function deleteReport(id, cardEl) {
 }
 
 function clearFilters() {
-  document.getElementById('filter-tech').value = '';
+  const tech = document.getElementById('filter-tech');
+  if (tech) tech.value = '';
   document.getElementById('filter-date').value = '';
   document.getElementById('filter-job').value = '';
   loadReports();
 }
 
+/* ─── Admin ───────────────────────────────────────────────────────────────── */
+function setupAdmin() {
+  document.getElementById('add-job-btn').addEventListener('click', addJob);
+  document.getElementById('add-user-btn').addEventListener('click', addUser);
+  document.getElementById('change-pw-btn').addEventListener('click', changePassword);
+}
+
+async function loadAdminData() {
+  await Promise.all([loadAdminJobs(), loadAdminUsers()]);
+}
+
+async function loadAdminJobs() {
+  const container = document.getElementById('jobs-list');
+  container.innerHTML = `<div class="loading-state" style="padding:20px"><div class="spinner"></div></div>`;
+  try {
+    const res = await fetch('/api/jobs?all=true');
+    const jobs = await res.json();
+    if (!jobs.length) { container.innerHTML = '<p style="color:var(--gray-400);font-size:13px;padding:4px 0">No jobs yet.</p>'; return; }
+    container.innerHTML = `
+      <table class="admin-table">
+        <thead><tr><th>Job #</th><th>Name</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          ${jobs.map(j => `
+            <tr>
+              <td><strong>${escHtml(j.job_number)}</strong></td>
+              <td>${escHtml(j.job_name)}</td>
+              <td><span class="badge-role ${j.active ? 'badge-active' : 'badge-inactive'}">${j.active ? 'Active' : 'Inactive'}</span></td>
+              <td class="action-btns">
+                <button class="btn btn-ghost btn-sm" data-id="${j.id}" data-active="${j.active}">
+                  ${j.active ? 'Deactivate' : 'Activate'}
+                </button>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+    container.querySelectorAll('[data-id][data-active]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const newActive = btn.dataset.active === '1' ? 0 : 1;
+        await fetch(`/api/jobs/${btn.dataset.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ active: newActive }),
+        });
+        await loadAdminJobs();
+        await loadJobs();
+        populateJobDropdown('job-select');
+        populateJobDropdown('filter-job', true);
+      });
+    });
+  } catch {
+    container.innerHTML = '<p style="color:#dc2626;font-size:13px">Failed to load jobs.</p>';
+  }
+}
+
+async function addJob() {
+  const num  = document.getElementById('new-job-number').value.trim();
+  const name = document.getElementById('new-job-name').value.trim();
+  if (!num || !name) { showToast('Job number and name are required.', 'error'); return; }
+  try {
+    const res = await fetch('/api/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job_number: num, job_name: name }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    document.getElementById('new-job-number').value = '';
+    document.getElementById('new-job-name').value = '';
+    await loadAdminJobs();
+    await loadJobs();
+    populateJobDropdown('job-select');
+    populateJobDropdown('filter-job', true);
+    showToast('Job added.', 'success');
+  } catch (err) {
+    showToast(err.message || 'Failed to add job.', 'error');
+  }
+}
+
+async function loadAdminUsers() {
+  const container = document.getElementById('users-list');
+  container.innerHTML = `<div class="loading-state" style="padding:20px"><div class="spinner"></div></div>`;
+  try {
+    const res   = await fetch('/api/users');
+    const users = await res.json();
+    container.innerHTML = `
+      <table class="admin-table">
+        <thead><tr><th>Name</th><th>Username</th><th>Role</th><th></th></tr></thead>
+        <tbody>
+          ${users.map(u => `
+            <tr>
+              <td><strong>${escHtml(u.name)}</strong></td>
+              <td>${escHtml(u.username)}</td>
+              <td><span class="badge-role ${u.role === 'admin' ? 'badge-admin' : 'badge-tech'}">${u.role}</span></td>
+              <td class="action-btns">
+                ${u.id !== currentUser?.id ? `
+                  <button class="btn btn-danger btn-sm" data-uid="${u.id}">Remove</button>
+                ` : '<span style="font-size:12px;color:var(--gray-400)">You</span>'}
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+    container.querySelectorAll('[data-uid]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm(`Remove user? This cannot be undone.`)) return;
+        await fetch(`/api/users/${btn.dataset.uid}`, { method: 'DELETE' });
+        showToast('User removed.', 'success');
+        loadAdminUsers();
+      });
+    });
+  } catch {
+    container.innerHTML = '<p style="color:#dc2626;font-size:13px">Failed to load users.</p>';
+  }
+}
+
+async function addUser() {
+  const name     = document.getElementById('new-user-name').value.trim();
+  const username = document.getElementById('new-username').value.trim();
+  const password = document.getElementById('new-user-password').value;
+  const role     = document.getElementById('new-user-role').value;
+  if (!name || !username || !password) { showToast('Name, username, and password are required.', 'error'); return; }
+  if (password.length < 6) { showToast('Password must be at least 6 characters.', 'error'); return; }
+  try {
+    const res = await fetch('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, username, password, role }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    document.getElementById('new-user-name').value = '';
+    document.getElementById('new-username').value = '';
+    document.getElementById('new-user-password').value = '';
+    loadAdminUsers();
+    showToast(`User "${name}" added.`, 'success');
+  } catch (err) {
+    showToast(err.message || 'Failed to add user.', 'error');
+  }
+}
+
+async function changePassword() {
+  const cur = document.getElementById('cur-password').value;
+  const nw  = document.getElementById('new-password').value;
+  if (!cur || !nw) { showToast('Both password fields are required.', 'error'); return; }
+  try {
+    const res = await fetch('/api/me/password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ current_password: cur, new_password: nw }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    document.getElementById('cur-password').value = '';
+    document.getElementById('new-password').value = '';
+    showToast('Password changed.', 'success');
+  } catch (err) {
+    showToast(err.message || 'Failed to change password.', 'error');
+  }
+}
+
 /* ─── Toast ───────────────────────────────────────────────────────────────── */
 function showToast(message, type = 'success') {
   const toast = document.getElementById('toast');
-  const icon = type === 'success'
+  const icon  = type === 'success'
     ? `<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>`
     : `<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>`;
-
   toast.innerHTML = icon + escHtml(message);
   toast.className = `toast toast-${type} show`;
-
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toast.classList.remove('show'), 3500);
 }
@@ -255,9 +440,6 @@ function showToast(message, type = 'success') {
 function escHtml(str) {
   if (str == null) return '';
   return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
