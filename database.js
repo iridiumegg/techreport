@@ -45,6 +45,14 @@ async function init() {
     );
   `);
 
+  // Add phone column if it doesn't exist yet (migration)
+  await pool.query(`
+    DO $$ BEGIN
+      ALTER TABLE users ADD COLUMN phone TEXT;
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$;
+  `);
+
   // Seed admin account on first run
   const { rows: [{ count: userCount }] } = await pool.query('SELECT COUNT(*) as count FROM users');
   if (parseInt(userCount) === 0) {

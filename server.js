@@ -9,6 +9,8 @@ const cloudinary = require('cloudinary').v2;
 const path = require('path');
 const { pool, init } = require('./database');
 const Anthropic = require('@anthropic-ai/sdk');
+const cron = require('node-cron');
+const twilio = require('twilio');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -18,6 +20,9 @@ cloudinary.config({
   api_key:    process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
+
+const smsEnabled = !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER);
+const twilioClient = smsEnabled ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN) : null;
 
 const photosEnabled = !!(process.env.CLOUDINARY_CLOUD_NAME);
 const aiEnabled = !!(process.env.ANTHROPIC_API_KEY);
@@ -309,7 +314,7 @@ app.delete('/api/reports/:id', async (req, res) => {
 
 app.get('/api/users', requireAdmin, async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT id, name, username, role, created_at FROM users ORDER BY name');
+    const { rows } = await pool.query('SELECT id, name, username, role, phone, created_at FROM users ORDER BY name');
     res.json(rows);
   } catch (err) {
     console.error(err);
@@ -318,14 +323,14 @@ app.get('/api/users', requireAdmin, async (req, res) => {
 });
 
 app.post('/api/users', requireAdmin, async (req, res) => {
-  const { name, username, password, role } = req.body;
+  const { name, username, password, role, phone } = req.body;
   if (!name || !username || !password) return res.status(400).json({ error: 'name, username, and password are required' });
   if (!['tech', 'admin'].includes(role)) return res.status(400).json({ error: 'role must be tech or admin' });
   try {
     const hash = bcrypt.hashSync(password, 12);
     const { rows } = await pool.query(
-      'INSERT INTO users (name, username, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id, name, username, role, created_at',
-      [name.trim(), username.trim().toLowerCase(), hash, role]
+      'INSERT INTO users (name, username, password_hash, role, phone) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, username, role, phone, created_at',
+      [name.trim(), username.trim().toLowerCase(), hash, role, phone?.trim() || null]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -336,12 +341,13 @@ app.post('/api/users', requireAdmin, async (req, res) => {
 });
 
 app.patch('/api/users/:id', requireAdmin, async (req, res) => {
-  const { password, role, name } = req.body;
+  const { password, role, name, phone } = req.body;
   try {
-    if (password) await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [bcrypt.hashSync(password, 12), req.params.id]);
-    if (role)     await pool.query('UPDATE users SET role = $1 WHERE id = $2', [role, req.params.id]);
-    if (name)     await pool.query('UPDATE users SET name = $1 WHERE id = $2', [name.trim(), req.params.id]);
-    const { rows } = await pool.query('SELECT id, name, username, role, created_at FROM users WHERE id = $1', [req.params.id]);
+    if (password)          await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [bcrypt.hashSync(password, 12), req.params.id]);
+    if (role)              await pool.query('UPDATE users SET role = $1 WHERE id = $2', [role, req.params.id]);
+    if (name)              await pool.query('UPDATE users SET name = $1 WHERE id = $2', [name.trim(), req.params.id]);
+    if (phone !== undefined) await pool.query('UPDATE users SET phone = $1 WHERE id = $2', [phone?.trim() || null, req.params.id]);
+    const { rows } = await pool.query('SELECT id, name, username, role, phone, created_at FROM users WHERE id = $1', [req.params.id]);
     res.json(rows[0]);
   } catch (err) {
     console.error(err);
@@ -454,6 +460,100 @@ app.post('/api/summarize', requireAdmin, async (req, res) => {
   } finally {
     res.end();
   }
+});
+
+// ─── SMS Reminders ────────────────────────────────────────────────────────────
+
+function normalizePhone(raw) {
+  const digits = String(raw).replace(/\D/g, '');
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  return null;
+}
+
+function todayCT() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date());
+}
+
+const notifiedDates = new Set();
+
+async function sendDailyReportReminders() {
+  if (!smsEnabled) return;
+  const today = todayCT();
+  if (notifiedDates.has(today)) return;
+  notifiedDates.add(today);
+
+  let missingWithPhone, allMissing, admins;
+  try {
+    const { rows: a } = await pool.query(`
+      SELECT u.name, u.phone FROM users u
+      WHERE u.role = 'tech'
+        AND u.phone IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM reports r WHERE r.user_id = u.id AND r.report_date = $1)
+    `, [today]);
+    missingWithPhone = a;
+
+    const { rows: b } = await pool.query(`
+      SELECT u.name FROM users u
+      WHERE u.role = 'tech'
+        AND NOT EXISTS (SELECT 1 FROM reports r WHERE r.user_id = u.id AND r.report_date = $1)
+      ORDER BY u.name
+    `, [today]);
+    allMissing = b;
+
+    const { rows: c } = await pool.query(
+      `SELECT name, phone FROM users WHERE role = 'admin' AND phone IS NOT NULL`
+    );
+    admins = c;
+  } catch (err) {
+    console.error('SMS reminder: DB error', err);
+    return;
+  }
+
+  if (allMissing.length === 0) return;
+
+  // Text each missing tech individually
+  for (const tech of missingWithPhone) {
+    const to = normalizePhone(tech.phone);
+    if (!to) continue;
+    try {
+      await twilioClient.messages.create({
+        body: `Hi ${tech.name}, just a reminder that your daily report hasn't been submitted yet today. Please log in to submit it.`,
+        from: process.env.TWILIO_PHONE_NUMBER,
+        to,
+      });
+    } catch (err) {
+      console.error(`SMS to tech ${tech.name} failed:`, err.message);
+    }
+  }
+
+  // Text admins with a full list of who's missing
+  const names = allMissing.map(u => u.name).join(', ');
+  for (const admin of admins) {
+    const to = normalizePhone(admin.phone);
+    if (!to) continue;
+    try {
+      await twilioClient.messages.create({
+        body: `ES2 Built — Daily report reminder (${today}): The following techs have not submitted a report today: ${names}`,
+        from: process.env.TWILIO_PHONE_NUMBER,
+        to,
+      });
+    } catch (err) {
+      console.error(`SMS to admin ${admin.name} failed:`, err.message);
+    }
+  }
+
+  console.log(`Daily report reminders sent. Missing techs: ${names || 'none'}`);
+}
+
+// Runs at 22:00 UTC (5pm CDT) and 23:00 UTC (5pm CST) Mon–Fri
+// CT-hour check inside ensures only one actually fires at 5pm
+cron.schedule('0 22,23 * * 1-5', async () => {
+  const ctHour = parseInt(
+    new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false }).format(new Date()),
+    10
+  );
+  if (ctHour === 17) await sendDailyReportReminders();
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
