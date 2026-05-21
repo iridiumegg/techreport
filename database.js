@@ -2,7 +2,9 @@ const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 const path = require('path');
 
-const db = new Database(path.join(__dirname, 'reports.db'));
+// Use DATA_DIR env var on Railway (persistent volume mount point), fallback to project root locally
+const DB_PATH = path.join(process.env.DATA_DIR || __dirname, 'reports.db');
+const db = new Database(DB_PATH);
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
