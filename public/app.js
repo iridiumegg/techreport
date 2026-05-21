@@ -356,7 +356,7 @@ function renderReports(reports, container) {
       <div class="report-card-header">
         <div>
           <div class="report-meta">
-            <span class="report-tech-name">${escHtml(r.tech_name)}</span>
+            <span class="report-tech-name">${escHtml(r.tech_name)} / (⭐${r.points})</span>
             <span class="tag tag-green">${escHtml(formatDate(r.report_date))}</span>
           </div>
           <div class="report-job">${escHtml(r.job_number)} — ${escHtml(r.job_name)}</div>

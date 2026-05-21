@@ -190,7 +190,8 @@ app.get('/api/reports', async (req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT r.id, r.user_id, r.job_id, r.tech_name, r.report_date, r.notes, r.created_at,
-             j.job_number, j.job_name
+             j.job_number, j.job_name,
+             (SELECT COUNT(*) * 5 FROM reports r2 WHERE r2.user_id = r.user_id) AS points
       FROM reports r JOIN jobs j ON r.job_id = j.id
       ${where}
       ORDER BY r.report_date DESC, r.created_at DESC
