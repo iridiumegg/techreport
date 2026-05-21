@@ -348,6 +348,138 @@ textarea { resize: vertical; min-height: 120px; line-height: 1.55; }
 }
 .btn-danger:hover { background: #fef2f2; border-color: #dc2626; }
 
+/* ─── Photo upload ───────────────────────────────────────────────────────── */
+.label-hint {
+  font-weight: 400;
+  color: var(--gray-400);
+  font-size: 12px;
+}
+
+.photo-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 28px 20px;
+  border: 2px dashed var(--gray-300);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition);
+  text-align: center;
+}
+
+.photo-drop:hover, .photo-drop.drag-over {
+  border-color: var(--green-500);
+  background: var(--green-25);
+}
+
+.photo-drop svg {
+  width: 32px;
+  height: 32px;
+  color: var(--gray-400);
+  margin-bottom: 2px;
+}
+
+.photo-drop span {
+  font-size: 14px;
+  color: var(--gray-600);
+  font-weight: 500;
+}
+
+.photo-drop-sub {
+  font-size: 12px !important;
+  color: var(--gray-400) !important;
+  font-weight: 400 !important;
+}
+
+.photo-previews {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.photo-preview-item {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1.5px solid var(--gray-200);
+  flex-shrink: 0;
+}
+
+.photo-preview-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.photo-preview-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  background: rgba(0,0,0,.55);
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+}
+.photo-preview-remove:hover { background: rgba(220,38,38,.8); }
+
+/* ─── Report photo gallery ───────────────────────────────────────────────── */
+.report-photo-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.report-photo-thumb {
+  width: 80px;
+  height: 80px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1.5px solid var(--gray-200);
+  flex-shrink: 0;
+  transition: transform var(--transition), box-shadow var(--transition);
+}
+
+.report-photo-thumb:hover { transform: scale(1.04); box-shadow: var(--shadow-md); }
+
+.report-photo-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.photo-count-badge {
+  width: 80px;
+  height: 80px;
+  border-radius: var(--radius);
+  background: var(--green-50);
+  border: 1.5px solid var(--green-100);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--green-700);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
 .form-actions {
   display: flex;
   justify-content: flex-end;

@@ -35,6 +35,14 @@ async function init() {
       notes        TEXT NOT NULL,
       created_at   TIMESTAMPTZ DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS photos (
+      id          SERIAL PRIMARY KEY,
+      report_id   INTEGER NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+      url         TEXT NOT NULL,
+      public_id   TEXT NOT NULL,
+      created_at  TIMESTAMPTZ DEFAULT NOW()
+    );
   `);
 
   // Seed admin account on first run

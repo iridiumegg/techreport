@@ -3,11 +3,45 @@ require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
+const multer = require('multer');
+const { Readable } = require('stream');
+const cloudinary = require('cloudinary').v2;
 const path = require('path');
 const { pool, init } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key:    process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+const photosEnabled = !!(process.env.CLOUDINARY_CLOUD_NAME);
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 5 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Only image files are allowed'));
+  },
+});
+
+function uploadToCloudinary(buffer, folder) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder, resource_type: 'image', quality: 'auto', fetch_format: 'auto' },
+      (err, result) => err ? reject(err) : resolve(result)
+    );
+    Readable.from(buffer).pipe(stream);
+  });
+}
+
+function thumbUrl(url) {
+  return url.replace('/upload/', '/upload/w_400,h_400,c_fill,q_auto,f_auto/');
+}
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
@@ -74,6 +108,10 @@ app.get('/api/me', (req, res) => {
   res.json({ id: req.session.userId, name: req.session.name, role: req.session.role });
 });
 
+app.get('/api/config', (req, res) => {
+  res.json({ photosEnabled });
+});
+
 // ─── Jobs ─────────────────────────────────────────────────────────────────────
 
 app.get('/api/jobs', async (req, res) => {
@@ -121,6 +159,21 @@ app.patch('/api/jobs/:id', requireAdmin, async (req, res) => {
 
 // ─── Reports ──────────────────────────────────────────────────────────────────
 
+async function attachPhotos(reports) {
+  if (!reports.length) return;
+  const ids = reports.map(r => r.id);
+  const { rows: photos } = await pool.query(
+    'SELECT * FROM photos WHERE report_id = ANY($1) ORDER BY created_at ASC',
+    [ids]
+  );
+  const byReport = {};
+  photos.forEach(p => {
+    if (!byReport[p.report_id]) byReport[p.report_id] = [];
+    byReport[p.report_id].push({ id: p.id, url: p.url, thumb: thumbUrl(p.url) });
+  });
+  reports.forEach(r => { r.photos = byReport[r.id] || []; });
+}
+
 app.get('/api/reports', async (req, res) => {
   const { job_id, date, tech } = req.query;
   const isAdmin = req.session.role === 'admin';
@@ -140,6 +193,7 @@ app.get('/api/reports', async (req, res) => {
       ${where}
       ORDER BY r.report_date DESC, r.created_at DESC
     `, params);
+    await attachPhotos(rows);
     res.json(rows);
   } catch (err) {
     console.error(err);
@@ -165,10 +219,44 @@ app.post('/api/reports', async (req, res) => {
       req.session.userId, req.session.name, Number(job_id),
       report_date, hours_worked ? Number(hours_worked) : null, notes,
     ]);
+    report.photos = [];
     res.status(201).json(report);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.post('/api/reports/:id/photos', upload.array('photos', 5), async (req, res) => {
+  if (!photosEnabled) return res.status(503).json({ error: 'Photo uploads are not configured' });
+  if (!req.files?.length) return res.status(400).json({ error: 'No photos provided' });
+
+  try {
+    const { rows } = await pool.query('SELECT user_id FROM reports WHERE id = $1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Report not found' });
+    if (req.session.role !== 'admin' && rows[0].user_id !== req.session.userId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const uploaded = await Promise.all(
+      req.files.map(f => uploadToCloudinary(f.buffer, 'es2-reports'))
+    );
+
+    const saved = await Promise.all(
+      uploaded.map(r =>
+        pool.query(
+          'INSERT INTO photos (report_id, url, public_id) VALUES ($1, $2, $3) RETURNING *',
+          [req.params.id, r.secure_url, r.public_id]
+        )
+      )
+    );
+
+    res.status(201).json(
+      saved.map(r => ({ id: r.rows[0].id, url: r.rows[0].url, thumb: thumbUrl(r.rows[0].url) }))
+    );
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Photo upload failed' });
   }
 });
 
@@ -179,6 +267,7 @@ app.delete('/api/reports/:id', async (req, res) => {
     if (req.session.role !== 'admin' && rows[0].user_id !== req.session.userId) {
       return res.status(403).json({ error: 'Forbidden' });
     }
+    // photos deleted automatically via ON DELETE CASCADE
     await pool.query('DELETE FROM reports WHERE id = $1', [req.params.id]);
     res.json({ success: true });
   } catch (err) {

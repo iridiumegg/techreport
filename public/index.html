@@ -83,6 +83,17 @@
             <textarea id="notes" rows="6" placeholder="Describe the work completed today — tasks performed, issues encountered, materials used, progress made, etc."></textarea>
           </div>
 
+          <div class="form-group" id="photo-field" style="display:none">
+            <label>Photos <span class="label-hint">(optional &mdash; up to 5 images, 10MB each)</span></label>
+            <label class="photo-drop" id="photo-drop" for="photo-input">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3 12l6.75-6.75a2.25 2.25 0 013 0L21 12m-18 3.75h18"/></svg>
+              <span>Click to add photos or drag &amp; drop</span>
+              <span class="photo-drop-sub">PNG, JPG, HEIC up to 10 MB each</span>
+              <input type="file" id="photo-input" accept="image/*" multiple style="display:none" />
+            </label>
+            <div class="photo-previews" id="photo-previews"></div>
+          </div>
+
           <div class="form-actions">
             <button type="button" id="clear-btn" class="btn btn-ghost">Clear Form</button>
             <button type="submit" class="btn btn-primary">

@@ -2,6 +2,8 @@
 let currentUser = null;
 let jobs = [];
 let toastTimer = null;
+let selectedPhotos = [];   // File objects staged for upload
+let photosEnabled = false;
 
 /* ─── Init ────────────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', async () => {
@@ -12,7 +14,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupTabs();
   setupLogout();
 
-  await loadJobs();
+  await Promise.all([loadJobs(), loadConfig()]);
   populateJobDropdown('job-select');
   populateJobDropdown('filter-job', true);
 
@@ -21,6 +23,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('filter-btn').addEventListener('click', loadReports);
   document.getElementById('clear-filter-btn').addEventListener('click', clearFilters);
 
+  setupPhotoInput();
   if (currentUser?.role === 'admin') setupAdmin();
 });
 
@@ -50,6 +53,60 @@ function setupLogout() {
   document.getElementById('logout-btn').addEventListener('click', async () => {
     await fetch('/api/logout', { method: 'POST' });
     window.location.href = '/login';
+  });
+}
+
+/* ─── Config ──────────────────────────────────────────────────────────────── */
+async function loadConfig() {
+  try {
+    const res = await fetch('/api/config');
+    const cfg = await res.json();
+    photosEnabled = cfg.photosEnabled;
+    if (photosEnabled) document.getElementById('photo-field').style.display = '';
+  } catch { /* photos just stay hidden */ }
+}
+
+/* ─── Photo input ─────────────────────────────────────────────────────────── */
+function setupPhotoInput() {
+  const input = document.getElementById('photo-input');
+  const drop  = document.getElementById('photo-drop');
+  if (!input) return;
+
+  input.addEventListener('change', () => addPhotos(Array.from(input.files)));
+
+  drop.addEventListener('dragover',  e => { e.preventDefault(); drop.classList.add('drag-over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('drag-over'));
+  drop.addEventListener('drop', e => {
+    e.preventDefault();
+    drop.classList.remove('drag-over');
+    addPhotos(Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')));
+  });
+}
+
+function addPhotos(files) {
+  const remaining = 5 - selectedPhotos.length;
+  if (remaining <= 0) { showToast('Maximum 5 photos per report.', 'error'); return; }
+  const toAdd = files.slice(0, remaining);
+  selectedPhotos.push(...toAdd);
+  renderPhotoPreviews();
+}
+
+function renderPhotoPreviews() {
+  const container = document.getElementById('photo-previews');
+  container.innerHTML = '';
+  selectedPhotos.forEach((file, i) => {
+    const url = URL.createObjectURL(file);
+    const wrap = document.createElement('div');
+    wrap.className = 'photo-preview-item';
+    wrap.innerHTML = `
+      <img src="${url}" alt="Preview" />
+      <button class="photo-preview-remove" data-index="${i}" title="Remove">&times;</button>
+    `;
+    wrap.querySelector('button').addEventListener('click', () => {
+      selectedPhotos.splice(i, 1);
+      renderPhotoPreviews();
+    });
+    container.appendChild(wrap);
   });
 }
 
@@ -158,6 +215,16 @@ async function handleSubmit(e) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Submit failed');
+
+    // Upload photos if any were selected
+    if (photosEnabled && selectedPhotos.length > 0) {
+      btn.innerHTML = `Uploading photos…`;
+      const fd = new FormData();
+      selectedPhotos.forEach(f => fd.append('photos', f));
+      const photoRes = await fetch(`/api/reports/${data.id}/photos`, { method: 'POST', body: fd });
+      if (!photoRes.ok) showToast('Report saved, but photo upload failed.', 'error');
+    }
+
     clearForm();
     showToast('Report submitted successfully!', 'success');
   } catch (err) {
@@ -171,6 +238,8 @@ async function handleSubmit(e) {
 function clearForm() {
   document.getElementById('report-form').reset();
   setTodayDate();
+  selectedPhotos = [];
+  renderPhotoPreviews();
   document.querySelectorAll('.error').forEach(el => el.classList.remove('error'));
 }
 
@@ -231,6 +300,7 @@ function renderReports(reports, container) {
         </div>
       </div>
       <div class="report-notes">${escHtml(r.notes)}</div>
+      ${renderPhotoGallery(r.photos)}
       <div class="report-card-footer">
         <span class="report-timestamp">Submitted ${formatTimestamp(r.created_at)}</span>
         ${canDelete ? `<button class="btn btn-danger" data-id="${r.id}">Delete</button>` : ''}
@@ -241,6 +311,21 @@ function renderReports(reports, container) {
     }
     container.appendChild(card);
   });
+}
+
+function renderPhotoGallery(photos) {
+  if (!photos?.length) return '';
+  const visible = photos.slice(0, 4);
+  const extra   = photos.length - visible.length;
+  const thumbs  = visible.map(p =>
+    `<a class="report-photo-thumb" href="${escHtml(p.url)}" target="_blank" rel="noopener">
+       <img src="${escHtml(p.thumb)}" alt="Job photo" loading="lazy" />
+     </a>`
+  ).join('');
+  const more = extra > 0
+    ? `<a class="photo-count-badge" href="${escHtml(photos[4].url)}" target="_blank" rel="noopener">+${extra} more</a>`
+    : '';
+  return `<div class="report-photo-gallery">${thumbs}${more}</div>`;
 }
 
 async function deleteReport(id, cardEl) {
