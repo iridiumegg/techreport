@@ -227,6 +227,40 @@
 
   <div id="toast" class="toast" role="alert" aria-live="polite"></div>
 
+  <!-- Edit Report Modal -->
+  <div id="edit-modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title">Edit Report</h2>
+        <button class="modal-close" id="modal-close" aria-label="Close">&times;</button>
+      </div>
+      <form id="edit-form" class="form" novalidate>
+        <input type="hidden" id="edit-report-id" />
+        <div class="form-group">
+          <label for="edit-job-select">Job Site <span class="required">*</span></label>
+          <select id="edit-job-select">
+            <option value="">— Select a Job —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="edit-date">Date <span class="required">*</span></label>
+          <input type="date" id="edit-date" />
+        </div>
+        <div class="form-group">
+          <label for="edit-notes">Work Description / Notes <span class="required">*</span></label>
+          <textarea id="edit-notes" rows="6"></textarea>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" id="modal-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>
+            Save Changes
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>

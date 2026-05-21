@@ -187,7 +187,7 @@ app.get('/api/reports', async (req, res) => {
 
   try {
     const { rows } = await pool.query(`
-      SELECT r.id, r.tech_name, r.report_date, r.hours_worked, r.notes, r.created_at,
+      SELECT r.id, r.user_id, r.job_id, r.tech_name, r.report_date, r.notes, r.created_at,
              j.job_number, j.job_name
       FROM reports r JOIN jobs j ON r.job_id = j.id
       ${where}
@@ -221,6 +221,32 @@ app.post('/api/reports', async (req, res) => {
     ]);
     report.photos = [];
     res.status(201).json(report);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.put('/api/reports/:id', async (req, res) => {
+  const { job_id, report_date, notes } = req.body;
+  if (!job_id || !report_date || !notes) {
+    return res.status(400).json({ error: 'job_id, report_date, and notes are required' });
+  }
+  try {
+    const { rows } = await pool.query('SELECT * FROM reports WHERE id = $1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    if (req.session.role !== 'admin' && rows[0].user_id !== req.session.userId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const { rows: [updated] } = await pool.query(`
+      WITH upd AS (
+        UPDATE reports SET job_id = $1, report_date = $2, notes = $3 WHERE id = $4 RETURNING *
+      )
+      SELECT upd.id, upd.user_id, upd.job_id, upd.tech_name, upd.report_date, upd.notes, upd.created_at,
+             j.job_number, j.job_name
+      FROM upd JOIN jobs j ON upd.job_id = j.id
+    `, [Number(job_id), report_date, notes, req.params.id]);
+    res.json(updated);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error' });

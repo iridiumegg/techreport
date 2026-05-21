@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('clear-filter-btn').addEventListener('click', clearFilters);
 
   setupPhotoInput();
+  setupEditModal();
   if (currentUser?.role === 'admin') setupAdmin();
 });
 
@@ -64,6 +65,66 @@ async function loadConfig() {
     photosEnabled = cfg.photosEnabled;
     if (photosEnabled) document.getElementById('photo-field').style.display = '';
   } catch { /* photos just stay hidden */ }
+}
+
+/* ─── Edit modal ──────────────────────────────────────────────────────────── */
+function setupEditModal() {
+  document.getElementById('modal-close').addEventListener('click', closeEditModal);
+  document.getElementById('modal-cancel').addEventListener('click', closeEditModal);
+  document.getElementById('edit-modal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeEditModal();
+  });
+  document.getElementById('edit-form').addEventListener('submit', handleEditSubmit);
+}
+
+function openEditModal(report) {
+  document.getElementById('edit-report-id').value = report.id;
+  document.getElementById('edit-date').value = report.report_date;
+  document.getElementById('edit-notes').value = report.notes;
+  populateJobDropdown('edit-job-select');
+  document.getElementById('edit-job-select').value = report.job_id || '';
+  document.getElementById('edit-modal').hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+
+function closeEditModal() {
+  document.getElementById('edit-modal').hidden = true;
+  document.body.style.overflow = '';
+}
+
+async function handleEditSubmit(e) {
+  e.preventDefault();
+  const id          = document.getElementById('edit-report-id').value;
+  const job_id      = document.getElementById('edit-job-select').value;
+  const report_date = document.getElementById('edit-date').value;
+  const notes       = document.getElementById('edit-notes').value.trim();
+
+  if (!job_id || !report_date || !notes) {
+    showToast('Please fill in all required fields.', 'error');
+    return;
+  }
+
+  const btn = document.querySelector('#edit-form .btn-primary');
+  btn.disabled = true;
+  btn.innerHTML = 'Saving…';
+
+  try {
+    const res = await fetch(`/api/reports/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job_id, report_date, notes }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Save failed');
+    closeEditModal();
+    showToast('Report updated.', 'success');
+    loadReports();
+  } catch (err) {
+    showToast(err.message || 'Failed to save changes.', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<svg viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg> Save Changes`;
+  }
 }
 
 /* ─── Photo input ─────────────────────────────────────────────────────────── */
@@ -285,6 +346,7 @@ function renderReports(reports, container) {
   reports.forEach(r => {
     const card = document.createElement('div');
     card.className = 'report-card';
+    const canEdit   = currentUser?.role === 'admin' || r.user_id === currentUser?.id;
     const canDelete = currentUser?.role === 'admin';
     card.innerHTML = `
       <div class="report-card-header">
@@ -300,12 +362,14 @@ function renderReports(reports, container) {
       ${renderPhotoGallery(r.photos)}
       <div class="report-card-footer">
         <span class="report-timestamp">Submitted ${formatTimestamp(r.created_at)}</span>
-        ${canDelete ? `<button class="btn btn-danger" data-id="${r.id}">Delete</button>` : ''}
+        <div class="action-btns">
+          ${canEdit   ? `<button class="btn btn-outline btn-sm edit-btn">Edit</button>` : ''}
+          ${canDelete ? `<button class="btn btn-danger btn-sm delete-btn">Delete</button>` : ''}
+        </div>
       </div>
     `;
-    if (canDelete) {
-      card.querySelector('.btn-danger').addEventListener('click', () => deleteReport(r.id, card));
-    }
+    if (canEdit)   card.querySelector('.edit-btn').addEventListener('click', () => openEditModal({ ...r }));
+    if (canDelete) card.querySelector('.delete-btn').addEventListener('click', () => deleteReport(r.id, card));
     container.appendChild(card);
   });
 }
