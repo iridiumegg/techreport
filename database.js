@@ -1,62 +1,60 @@
-const Database = require('better-sqlite3');
+const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
-const path = require('path');
 
-// Use DATA_DIR env var on Railway (persistent volume mount point), fallback to project root locally
-const DB_PATH = path.join(process.env.DATA_DIR || __dirname, 'reports.db');
-const db = new Database(DB_PATH);
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
+});
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    username TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'tech',
-    created_at TEXT DEFAULT (datetime('now'))
-  );
+async function init() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id        SERIAL PRIMARY KEY,
+      name      TEXT NOT NULL,
+      username  TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      role      TEXT NOT NULL DEFAULT 'tech',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
 
-  CREATE TABLE IF NOT EXISTS jobs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_number TEXT NOT NULL,
-    job_name TEXT NOT NULL,
-    active INTEGER DEFAULT 1,
-    created_at TEXT DEFAULT (datetime('now'))
-  );
+    CREATE TABLE IF NOT EXISTS jobs (
+      id         SERIAL PRIMARY KEY,
+      job_number TEXT NOT NULL,
+      job_name   TEXT NOT NULL,
+      active     INTEGER NOT NULL DEFAULT 1,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
 
-  CREATE TABLE IF NOT EXISTS reports (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    tech_name TEXT NOT NULL,
-    job_id INTEGER NOT NULL,
-    report_date TEXT NOT NULL,
-    hours_worked REAL,
-    notes TEXT NOT NULL,
-    created_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (user_id) REFERENCES users(id),
-    FOREIGN KEY (job_id) REFERENCES jobs(id)
-  );
-`);
+    CREATE TABLE IF NOT EXISTS reports (
+      id           SERIAL PRIMARY KEY,
+      user_id      INTEGER REFERENCES users(id),
+      tech_name    TEXT NOT NULL,
+      job_id       INTEGER NOT NULL REFERENCES jobs(id),
+      report_date  TEXT NOT NULL,
+      hours_worked REAL,
+      notes        TEXT NOT NULL,
+      created_at   TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
 
-// Seed default admin if no users exist
-const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get();
-if (userCount.count === 0) {
-  const hash = bcrypt.hashSync('es2admin', 12);
-  db.prepare('INSERT INTO users (name, username, password_hash, role) VALUES (?, ?, ?, ?)').run(
-    'Administrator', 'admin', hash, 'admin'
-  );
-  console.log('\n  Default admin account created:');
-  console.log('  Username: admin');
-  console.log('  Password: es2admin');
-  console.log('  Change this password from the Admin panel after first login.\n');
-}
+  // Seed admin account on first run
+  const { rows: [{ count: userCount }] } = await pool.query('SELECT COUNT(*) as count FROM users');
+  if (parseInt(userCount) === 0) {
+    const hash = bcrypt.hashSync('es2admin', 12);
+    await pool.query(
+      'INSERT INTO users (name, username, password_hash, role) VALUES ($1, $2, $3, $4)',
+      ['Administrator', 'admin', hash, 'admin']
+    );
+    console.log('\n  Default admin account created:');
+    console.log('  Username: admin');
+    console.log('  Password: es2admin');
+    console.log('  Change this password from the Admin panel after first login.\n');
+  }
 
-// Seed active jobs if none exist
-const jobCount = db.prepare('SELECT COUNT(*) as count FROM jobs').get();
-if (jobCount.count === 0) {
-  const insert = db.prepare('INSERT INTO jobs (job_number, job_name) VALUES (?, ?)');
-  const seed = db.transaction(() => {
-    [
+  // Seed active jobs on first run
+  const { rows: [{ count: jobCount }] } = await pool.query('SELECT COUNT(*) as count FROM jobs');
+  if (parseInt(jobCount) === 0) {
+    const jobs = [
       ['03-23010B', 'AWE CBMAA PH II'],
       ['03-24007B', 'ARDOT Multi Site Upgrades'],
       ['03-24010B', 'Hotel Vin Rogers'],
@@ -73,9 +71,11 @@ if (jobCount.count === 0) {
       ['03-26001B', 'WM Buckeye AZ Air Farm'],
       ['03-26002B', 'IBC TSSA 2/1/26-1/31/27'],
       ['03-26003B', 'CANTEX, Inc. Nashville, AR'],
-    ].forEach(([num, name]) => insert.run(num, name));
-  });
-  seed();
+    ];
+    for (const [num, name] of jobs) {
+      await pool.query('INSERT INTO jobs (job_number, job_name) VALUES ($1, $2)', [num, name]);
+    }
+  }
 }
 
-module.exports = db;
+module.exports = { pool, init };

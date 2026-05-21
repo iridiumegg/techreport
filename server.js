@@ -1,15 +1,15 @@
+require('dotenv').config();
+
 const express = require('express');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
 const path = require('path');
-const db = require('./database');
+const { pool, init } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
-
-// Serve static assets (CSS, JS) but not index.html — auth guards that
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 app.use(session({
@@ -39,19 +39,23 @@ app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
-
-  const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username.trim().toLowerCase());
-  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
-    return res.status(401).json({ error: 'Invalid username or password' });
+  try {
+    const { rows } = await pool.query('SELECT * FROM users WHERE username = $1', [username.trim().toLowerCase()]);
+    const user = rows[0];
+    if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+    req.session.userId = user.id;
+    req.session.name   = user.name;
+    req.session.role   = user.role;
+    res.json({ id: user.id, name: user.name, role: user.role });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
   }
-
-  req.session.userId = user.id;
-  req.session.name   = user.name;
-  req.session.role   = user.role;
-  res.json({ id: user.id, name: user.name, role: user.role });
 });
 
 app.post('/api/logout', (req, res) => {
@@ -72,140 +76,193 @@ app.get('/api/me', (req, res) => {
 
 // ─── Jobs ─────────────────────────────────────────────────────────────────────
 
-app.get('/api/jobs', (req, res) => {
-  const all = req.query.all === 'true' && req.session.role === 'admin';
-  const jobs = db.prepare(`SELECT * FROM jobs ${all ? '' : 'WHERE active = 1'} ORDER BY job_number`).all();
-  res.json(jobs);
-});
-
-app.post('/api/jobs', requireAdmin, (req, res) => {
-  const { job_number, job_name } = req.body;
-  if (!job_number || !job_name) return res.status(400).json({ error: 'job_number and job_name are required' });
+app.get('/api/jobs', async (req, res) => {
   try {
-    const result = db.prepare('INSERT INTO jobs (job_number, job_name) VALUES (?, ?)').run(
-      job_number.trim(), job_name.trim()
-    );
-    res.status(201).json(db.prepare('SELECT * FROM jobs WHERE id = ?').get(result.lastInsertRowid));
-  } catch (e) {
-    res.status(409).json({ error: 'Job number already exists' });
+    const showAll = req.query.all === 'true' && req.session.role === 'admin';
+    const q = showAll
+      ? 'SELECT * FROM jobs ORDER BY job_number'
+      : 'SELECT * FROM jobs WHERE active = 1 ORDER BY job_number';
+    const { rows } = await pool.query(q);
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
   }
 });
 
-app.patch('/api/jobs/:id', requireAdmin, (req, res) => {
+app.post('/api/jobs', requireAdmin, async (req, res) => {
+  const { job_number, job_name } = req.body;
+  if (!job_number || !job_name) return res.status(400).json({ error: 'job_number and job_name are required' });
+  try {
+    const { rows } = await pool.query(
+      'INSERT INTO jobs (job_number, job_name) VALUES ($1, $2) RETURNING *',
+      [job_number.trim(), job_name.trim()]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'Job number already exists' });
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.patch('/api/jobs/:id', requireAdmin, async (req, res) => {
   const { active, job_name } = req.body;
-  if (active !== undefined) db.prepare('UPDATE jobs SET active = ? WHERE id = ?').run(active ? 1 : 0, req.params.id);
-  if (job_name)             db.prepare('UPDATE jobs SET job_name = ? WHERE id = ?').run(job_name.trim(), req.params.id);
-  res.json(db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id));
+  try {
+    if (active !== undefined) await pool.query('UPDATE jobs SET active = $1 WHERE id = $2', [active ? 1 : 0, req.params.id]);
+    if (job_name)             await pool.query('UPDATE jobs SET job_name = $1 WHERE id = $2', [job_name.trim(), req.params.id]);
+    const { rows } = await pool.query('SELECT * FROM jobs WHERE id = $1', [req.params.id]);
+    res.json(rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
 // ─── Reports ──────────────────────────────────────────────────────────────────
 
-app.get('/api/reports', (req, res) => {
+app.get('/api/reports', async (req, res) => {
   const { job_id, date, tech } = req.query;
-  // Techs only see their own reports; admins see all
   const isAdmin = req.session.role === 'admin';
-  let query = `
-    SELECT r.id, r.tech_name, r.report_date, r.hours_worked, r.notes, r.created_at,
-           j.job_number, j.job_name
-    FROM reports r
-    JOIN jobs j ON r.job_id = j.id
-    WHERE 1=1
-  `;
   const params = [];
-  if (!isAdmin) { query += ' AND r.user_id = ?'; params.push(req.session.userId); }
-  if (job_id)   { query += ' AND r.job_id = ?'; params.push(job_id); }
-  if (date)     { query += ' AND r.report_date = ?'; params.push(date); }
-  if (tech && isAdmin) { query += ' AND r.tech_name LIKE ?'; params.push(`%${tech}%`); }
-  query += ' ORDER BY r.report_date DESC, r.created_at DESC';
+  let where = 'WHERE 1=1';
 
-  res.json(db.prepare(query).all(...params));
+  if (!isAdmin) { params.push(req.session.userId); where += ` AND r.user_id = $${params.length}`; }
+  if (job_id)   { params.push(job_id);             where += ` AND r.job_id = $${params.length}`; }
+  if (date)     { params.push(date);               where += ` AND r.report_date = $${params.length}`; }
+  if (tech && isAdmin) { params.push(`%${tech}%`); where += ` AND r.tech_name ILIKE $${params.length}`; }
+
+  try {
+    const { rows } = await pool.query(`
+      SELECT r.id, r.tech_name, r.report_date, r.hours_worked, r.notes, r.created_at,
+             j.job_number, j.job_name
+      FROM reports r JOIN jobs j ON r.job_id = j.id
+      ${where}
+      ORDER BY r.report_date DESC, r.created_at DESC
+    `, params);
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
-app.post('/api/reports', (req, res) => {
+app.post('/api/reports', async (req, res) => {
   const { job_id, report_date, hours_worked, notes } = req.body;
   if (!job_id || !report_date || !notes) {
     return res.status(400).json({ error: 'job_id, report_date, and notes are required' });
   }
-  const result = db.prepare(
-    'INSERT INTO reports (user_id, tech_name, job_id, report_date, hours_worked, notes) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(
-    req.session.userId,
-    req.session.name,
-    Number(job_id),
-    report_date,
-    hours_worked ? Number(hours_worked) : null,
-    notes
-  );
-  const report = db.prepare(`
-    SELECT r.id, r.tech_name, r.report_date, r.hours_worked, r.notes, r.created_at,
-           j.job_number, j.job_name
-    FROM reports r JOIN jobs j ON r.job_id = j.id WHERE r.id = ?
-  `).get(result.lastInsertRowid);
-  res.status(201).json(report);
+  try {
+    const { rows: [report] } = await pool.query(`
+      WITH ins AS (
+        INSERT INTO reports (user_id, tech_name, job_id, report_date, hours_worked, notes)
+        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *
+      )
+      SELECT ins.id, ins.tech_name, ins.report_date, ins.hours_worked, ins.notes, ins.created_at,
+             j.job_number, j.job_name
+      FROM ins JOIN jobs j ON ins.job_id = j.id
+    `, [
+      req.session.userId, req.session.name, Number(job_id),
+      report_date, hours_worked ? Number(hours_worked) : null, notes,
+    ]);
+    res.status(201).json(report);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
-app.delete('/api/reports/:id', (req, res) => {
-  const report = db.prepare('SELECT * FROM reports WHERE id = ?').get(req.params.id);
-  if (!report) return res.status(404).json({ error: 'Not found' });
-  // Techs can only delete their own; admins can delete any
-  if (req.session.role !== 'admin' && report.user_id !== req.session.userId) {
-    return res.status(403).json({ error: 'Forbidden' });
+app.delete('/api/reports/:id', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM reports WHERE id = $1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    if (req.session.role !== 'admin' && rows[0].user_id !== req.session.userId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    await pool.query('DELETE FROM reports WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
   }
-  db.prepare('DELETE FROM reports WHERE id = ?').run(req.params.id);
-  res.json({ success: true });
 });
 
 // ─── Users (admin only) ───────────────────────────────────────────────────────
 
-app.get('/api/users', requireAdmin, (req, res) => {
-  const users = db.prepare('SELECT id, name, username, role, created_at FROM users ORDER BY name').all();
-  res.json(users);
+app.get('/api/users', requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT id, name, username, role, created_at FROM users ORDER BY name');
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
-app.post('/api/users', requireAdmin, (req, res) => {
+app.post('/api/users', requireAdmin, async (req, res) => {
   const { name, username, password, role } = req.body;
   if (!name || !username || !password) return res.status(400).json({ error: 'name, username, and password are required' });
   if (!['tech', 'admin'].includes(role)) return res.status(400).json({ error: 'role must be tech or admin' });
   try {
     const hash = bcrypt.hashSync(password, 12);
-    const result = db.prepare('INSERT INTO users (name, username, password_hash, role) VALUES (?, ?, ?, ?)').run(
-      name.trim(), username.trim().toLowerCase(), hash, role
+    const { rows } = await pool.query(
+      'INSERT INTO users (name, username, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id, name, username, role, created_at',
+      [name.trim(), username.trim().toLowerCase(), hash, role]
     );
-    const user = db.prepare('SELECT id, name, username, role, created_at FROM users WHERE id = ?').get(result.lastInsertRowid);
-    res.status(201).json(user);
-  } catch (e) {
-    res.status(409).json({ error: 'Username already exists' });
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'Username already exists' });
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
   }
 });
 
-app.patch('/api/users/:id', requireAdmin, (req, res) => {
+app.patch('/api/users/:id', requireAdmin, async (req, res) => {
   const { password, role, name } = req.body;
-  const target = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
-  if (!target) return res.status(404).json({ error: 'User not found' });
-  if (password) db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(bcrypt.hashSync(password, 12), req.params.id);
-  if (role)     db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, req.params.id);
-  if (name)     db.prepare('UPDATE users SET name = ? WHERE id = ?').run(name.trim(), req.params.id);
-  res.json(db.prepare('SELECT id, name, username, role, created_at FROM users WHERE id = ?').get(req.params.id));
+  try {
+    if (password) await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [bcrypt.hashSync(password, 12), req.params.id]);
+    if (role)     await pool.query('UPDATE users SET role = $1 WHERE id = $2', [role, req.params.id]);
+    if (name)     await pool.query('UPDATE users SET name = $1 WHERE id = $2', [name.trim(), req.params.id]);
+    const { rows } = await pool.query('SELECT id, name, username, role, created_at FROM users WHERE id = $1', [req.params.id]);
+    res.json(rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
-app.delete('/api/users/:id', requireAdmin, (req, res) => {
+app.delete('/api/users/:id', requireAdmin, async (req, res) => {
   if (Number(req.params.id) === req.session.userId) return res.status(400).json({ error: "Can't delete your own account" });
-  db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
-  res.json({ success: true });
+  try {
+    await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
 // ─── Password change (self) ───────────────────────────────────────────────────
 
-app.post('/api/me/password', (req, res) => {
+app.post('/api/me/password', async (req, res) => {
   const { current_password, new_password } = req.body;
   if (!current_password || !new_password) return res.status(400).json({ error: 'Both fields required' });
   if (new_password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.session.userId);
-  if (!bcrypt.compareSync(current_password, user.password_hash)) return res.status(401).json({ error: 'Current password is incorrect' });
-  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(bcrypt.hashSync(new_password, 12), req.session.userId);
-  res.json({ success: true });
+  try {
+    const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [req.session.userId]);
+    if (!bcrypt.compareSync(current_password, rows[0].password_hash)) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [bcrypt.hashSync(new_password, 12), req.session.userId]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
-app.listen(PORT, () => {
-  console.log(`ES2 Built Tech Reports → http://localhost:${PORT}`);
-});
+// ─── Start ────────────────────────────────────────────────────────────────────
+
+init()
+  .then(() => app.listen(PORT, () => console.log(`ES2 Built Tech Reports → http://localhost:${PORT}`)))
+  .catch(err => { console.error('Failed to initialize database:', err); process.exit(1); });
