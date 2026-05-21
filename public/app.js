@@ -347,7 +347,7 @@ function renderReports(reports, container) {
     const card = document.createElement('div');
     card.className = 'report-card';
     const canEdit   = currentUser?.role === 'admin' || r.user_id === currentUser?.id;
-    const canDelete = currentUser?.role === 'admin';
+    const canDelete = currentUser?.role === 'admin' || r.user_id === currentUser?.id;
     card.innerHTML = `
       <div class="report-card-header">
         <div>
