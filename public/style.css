@@ -869,6 +869,12 @@ input:-webkit-autofill:focus {
 .admin-table tr:last-child td { border-bottom: none; }
 .admin-table tr:hover td { background: var(--green-25); }
 
+.user-meta {
+  font-size: 12px;
+  color: var(--gray-400);
+  margin-top: 2px;
+}
+
 .badge-role {
   display: inline-block;
   padding: 2px 8px;

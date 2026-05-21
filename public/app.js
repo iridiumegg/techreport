@@ -501,18 +501,17 @@ async function loadAdminUsers() {
     const users = await res.json();
     container.innerHTML = `
       <table class="admin-table">
-        <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Phone</th><th></th></tr></thead>
+        <thead><tr><th>User</th><th>Role</th><th></th></tr></thead>
         <tbody>
           ${users.map(u => `
             <tr>
-              <td><strong>${escHtml(u.name)}</strong></td>
-              <td>${escHtml(u.username)}</td>
-              <td><span class="badge-role ${u.role === 'admin' ? 'badge-admin' : 'badge-tech'}">${u.role}</span></td>
               <td>
-                <span class="user-phone" data-uid="${u.id}">${escHtml(u.phone || '—')}</span>
-                <button class="btn btn-ghost btn-sm" data-uid="${u.id}" data-action="phone" style="margin-left:6px">Edit</button>
+                <strong>${escHtml(u.name)}</strong>
+                <div class="user-meta">${escHtml(u.username)}${u.phone ? ` &middot; 📱 ${escHtml(u.phone)}` : ''}</div>
               </td>
+              <td><span class="badge-role ${u.role === 'admin' ? 'badge-admin' : 'badge-tech'}">${u.role}</span></td>
               <td class="action-btns">
+                <button class="btn btn-ghost btn-sm" data-uid="${u.id}" data-action="phone" data-phone="${escHtml(u.phone || '')}">${u.phone ? 'Edit Phone' : 'Add Phone'}</button>
                 ${u.id !== currentUser?.id ? `
                   <button class="btn btn-danger btn-sm" data-uid="${u.id}" data-action="remove">Remove</button>
                 ` : '<span style="font-size:12px;color:var(--gray-400)">You</span>'}
@@ -530,8 +529,7 @@ async function loadAdminUsers() {
     });
     container.querySelectorAll('[data-action="phone"]').forEach(btn => {
       btn.addEventListener('click', async () => {
-        const current = container.querySelector(`.user-phone[data-uid="${btn.dataset.uid}"]`)?.textContent;
-        const val = prompt('Enter phone number (e.g. 555-867-5309):', current === '—' ? '' : current);
+        const val = prompt('Enter phone number (e.g. 555-867-5309):', btn.dataset.phone);
         if (val === null) return;
         const res = await fetch(`/api/users/${btn.dataset.uid}`, {
           method: 'PATCH',
