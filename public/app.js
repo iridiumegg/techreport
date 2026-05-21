@@ -4,6 +4,7 @@ let jobs = [];
 let toastTimer = null;
 let selectedPhotos = [];   // File objects staged for upload
 let photosEnabled = false;
+let aiEnabled = false;
 
 /* ─── Init ────────────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', async () => {
@@ -25,6 +26,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   setupPhotoInput();
   setupEditModal();
+  setupSummaryModal();
   if (currentUser?.role === 'admin') setupAdmin();
 });
 
@@ -64,7 +66,9 @@ async function loadConfig() {
     const cfg = await res.json();
     photosEnabled = cfg.photosEnabled;
     if (photosEnabled) document.getElementById('photo-field').style.display = '';
-  } catch { /* photos just stay hidden */ }
+    aiEnabled = cfg.aiEnabled;
+    if (aiEnabled) document.getElementById('summarize-btn')?.classList.remove('hidden');
+  } catch { /* stay hidden */ }
 }
 
 /* ─── Edit modal ──────────────────────────────────────────────────────────── */
@@ -580,6 +584,108 @@ function showToast(message, type = 'success') {
   toast.className = `toast toast-${type} show`;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toast.classList.remove('show'), 3500);
+}
+
+/* ─── AI Summary Modal ────────────────────────────────────────────────────── */
+function setupSummaryModal() {
+  document.getElementById('summary-modal-close').addEventListener('click', closeSummaryModal);
+  document.getElementById('summary-modal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeSummaryModal();
+  });
+  document.getElementById('summarize-btn')?.addEventListener('click', openSummaryModal);
+}
+
+function closeSummaryModal() {
+  document.getElementById('summary-modal').hidden = true;
+  document.body.style.overflow = '';
+}
+
+async function openSummaryModal() {
+  if (!aiEnabled) return;
+
+  const jobId    = document.getElementById('filter-job')?.value;
+  const dateFrom = document.getElementById('filter-date')?.value;
+
+  if (!jobId) {
+    showToast('Select a job from the filter first to generate a summary.', 'error');
+    return;
+  }
+
+  const modal = document.getElementById('summary-modal');
+  const content = document.getElementById('summary-content');
+  const scope = document.getElementById('summary-scope');
+
+  const jobLabel = document.getElementById('filter-job')?.selectedOptions[0]?.text || '';
+  const dateLabel = dateFrom ? ` · ${formatDate(dateFrom)}` : '';
+  scope.textContent = jobLabel + dateLabel;
+
+  content.innerHTML = `<div class="loading-state"><div class="spinner"></div><span>Generating summary…</span></div>`;
+  modal.hidden = false;
+  document.body.style.overflow = 'hidden';
+
+  try {
+    const res = await fetch('/api/summarize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        job_id: jobId,
+        date_from: dateFrom || undefined,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Summarization failed');
+    }
+
+    content.innerHTML = '<div class="summary-body"></div>';
+    const body = content.querySelector('.summary-body');
+    let markdown = '';
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+
+      const lines = buf.split('\n');
+      buf = lines.pop();
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const payload = line.slice(6).trim();
+        if (payload === '[DONE]') break;
+        try {
+          const chunk = JSON.parse(payload);
+          if (chunk.error) throw new Error(chunk.error);
+          if (chunk.text) {
+            markdown += chunk.text;
+            body.innerHTML = renderMarkdown(markdown);
+          }
+        } catch { /* ignore parse errors */ }
+      }
+    }
+  } catch (err) {
+    content.innerHTML = `<div class="error-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg><span>${escHtml(err.message)}</span></div>`;
+  }
+}
+
+function renderMarkdown(md) {
+  return md
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    .replace(/(<li>.*<\/li>\n?)+/g, m => `<ul>${m}</ul>`)
+    .replace(/\n{2,}/g, '</p><p>')
+    .replace(/^(?!<[hul])(.+)$/gm, (m) => m.startsWith('<') ? m : `<p>${m}</p>`)
+    .replace(/<p><\/p>/g, '');
 }
 
 /* ─── Utils ───────────────────────────────────────────────────────────────── */

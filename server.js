@@ -8,6 +8,7 @@ const { Readable } = require('stream');
 const cloudinary = require('cloudinary').v2;
 const path = require('path');
 const { pool, init } = require('./database');
+const Anthropic = require('@anthropic-ai/sdk');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -19,6 +20,8 @@ cloudinary.config({
 });
 
 const photosEnabled = !!(process.env.CLOUDINARY_CLOUD_NAME);
+const aiEnabled = !!(process.env.ANTHROPIC_API_KEY);
+const anthropic = aiEnabled ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -109,7 +112,7 @@ app.get('/api/me', (req, res) => {
 });
 
 app.get('/api/config', (req, res) => {
-  res.json({ photosEnabled });
+  res.json({ photosEnabled, aiEnabled });
 });
 
 // ─── Jobs ─────────────────────────────────────────────────────────────────────
@@ -373,6 +376,83 @@ app.post('/api/me/password', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// ─── AI Summary ───────────────────────────────────────────────────────────────
+
+app.post('/api/summarize', requireAdmin, async (req, res) => {
+  if (!aiEnabled) return res.status(503).json({ error: 'AI summarization is not configured' });
+
+  const { job_id, date_from, date_to } = req.body;
+  if (!job_id) return res.status(400).json({ error: 'job_id is required' });
+
+  // Fetch reports for the requested scope
+  const params = [job_id];
+  let where = 'WHERE r.job_id = $1';
+  if (date_from) { params.push(date_from); where += ` AND r.report_date >= $${params.length}`; }
+  if (date_to)   { params.push(date_to);   where += ` AND r.report_date <= $${params.length}`; }
+
+  let reports;
+  try {
+    const { rows } = await pool.query(`
+      SELECT r.tech_name, r.report_date, r.notes,
+             j.job_number, j.job_name
+      FROM reports r JOIN jobs j ON r.job_id = j.id
+      ${where}
+      ORDER BY r.report_date DESC, r.created_at DESC
+    `, params);
+    reports = rows;
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Database error' });
+  }
+
+  if (!reports.length) return res.status(404).json({ error: 'No reports found for the selected scope' });
+
+  const reportText = reports.map(r =>
+    `Date: ${r.report_date}\nTechnician: ${r.tech_name}\n${r.notes}`
+  ).join('\n\n---\n\n');
+
+  const jobLabel = `${reports[0].job_number} — ${reports[0].job_name}`;
+
+  // Stream the response as SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  try {
+    const stream = anthropic.messages.stream({
+      model: 'claude-opus-4-7',
+      max_tokens: 1024,
+      system: [
+        {
+          type: 'text',
+          text: 'You are a construction project assistant for ES2 Built, a specialty electrical and low-voltage contractor. You write clear, professional summaries of technician daily field reports. Focus on work completed, progress made, issues noted, and next steps. Be concise and factual.',
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
+      messages: [
+        {
+          role: 'user',
+          content: `Please summarize the following field reports for job site **${jobLabel}**. Provide a brief executive overview followed by key points organized by theme (work completed, issues/blockers, materials, progress, next steps). Use markdown formatting.\n\n${reportText}`,
+        },
+      ],
+    });
+
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+        res.write(`data: ${JSON.stringify({ text: event.delta.text })}\n\n`);
+      }
+    }
+
+    res.write('data: [DONE]\n\n');
+  } catch (err) {
+    console.error('AI summarize error:', err);
+    res.write(`data: ${JSON.stringify({ error: 'AI request failed' })}\n\n`);
+  } finally {
+    res.end();
   }
 });
 

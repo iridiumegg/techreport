@@ -990,3 +990,54 @@ input:-webkit-autofill:focus {
 
 /* ─── Utility ────────────────────────────────────────────────────────────── */
 .hidden { display: none !important; }
+
+/* ─── AI Button ──────────────────────────────────────────────────────────── */
+.btn-ai {
+  background: linear-gradient(135deg, var(--green-800) 0%, #1e4080 100%);
+  color: var(--white);
+  border-color: transparent;
+  box-shadow: 0 2px 6px rgba(30,64,128,.25);
+}
+.btn-ai:hover {
+  background: linear-gradient(135deg, var(--green-700) 0%, #1a3a75 100%);
+  box-shadow: 0 3px 10px rgba(30,64,128,.35);
+}
+.btn-ai svg { color: #fbbf24; }
+
+/* ─── Summary Modal ──────────────────────────────────────────────────────── */
+.modal--wide {
+  width: 100%;
+  max-width: 720px;
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.summary-scope {
+  padding: 8px 24px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--green-600);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.summary-content {
+  padding: 20px 24px 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.summary-body {
+  font-size: 14.5px;
+  line-height: 1.75;
+  color: var(--gray-700);
+}
+
+.summary-body h1,
+.summary-body h2 { font-size: 15px; font-weight: 700; color: var(--gray-900); margin: 18px 0 8px; }
+.summary-body h3 { font-size: 13.5px; font-weight: 700; color: var(--gray-700); margin: 14px 0 6px; text-transform: uppercase; letter-spacing: .04em; }
+.summary-body p  { margin: 6px 0; }
+.summary-body ul { padding-left: 20px; margin: 6px 0; }
+.summary-body li { margin: 3px 0; }
+.summary-body strong { color: var(--gray-900); }
