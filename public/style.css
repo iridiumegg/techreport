@@ -941,9 +941,9 @@ input:-webkit-autofill:focus {
 }
 
 .login-brand-sub {
-  color: var(--green-200);
-  font-size: 13px;
-  margin-top: 4px;
+  color: var(--white);
+  font-size: 18px;
+  font-weight: 600;
   letter-spacing: .02em;
 }
 
