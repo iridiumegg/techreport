@@ -512,6 +512,7 @@ async function loadAdminUsers() {
               <td><span class="badge-role ${u.role === 'admin' ? 'badge-admin' : 'badge-tech'}">${u.role}</span></td>
               <td class="action-btns">
                 <button class="btn btn-ghost btn-sm" data-uid="${u.id}" data-action="phone" data-phone="${escHtml(u.phone || '')}">${u.phone ? 'Edit Phone' : 'Add Phone'}</button>
+                ${u.phone ? `<button class="btn btn-ghost btn-sm" data-uid="${u.id}" data-action="test-sms">Test SMS</button>` : ''}
                 ${u.id !== currentUser?.id ? `
                   <button class="btn btn-danger btn-sm" data-uid="${u.id}" data-action="remove">Remove</button>
                 ` : '<span style="font-size:12px;color:var(--gray-400)">You</span>'}
@@ -527,6 +528,24 @@ async function loadAdminUsers() {
         loadAdminUsers();
       });
     });
+    container.querySelectorAll('[data-action="test-sms"]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        btn.textContent = 'Sending…';
+        try {
+          const res = await fetch(`/api/users/${btn.dataset.uid}/test-sms`, { method: 'POST' });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error);
+          showToast('Test message sent!', 'success');
+        } catch (err) {
+          showToast(err.message || 'Failed to send test SMS.', 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Test SMS';
+        }
+      });
+    });
+
     container.querySelectorAll('[data-action="phone"]').forEach(btn => {
       btn.addEventListener('click', async () => {
         const val = prompt('Enter phone number (e.g. 555-867-5309):', btn.dataset.phone);
