@@ -501,27 +501,45 @@ async function loadAdminUsers() {
     const users = await res.json();
     container.innerHTML = `
       <table class="admin-table">
-        <thead><tr><th>Name</th><th>Username</th><th>Role</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Phone</th><th></th></tr></thead>
         <tbody>
           ${users.map(u => `
             <tr>
               <td><strong>${escHtml(u.name)}</strong></td>
               <td>${escHtml(u.username)}</td>
               <td><span class="badge-role ${u.role === 'admin' ? 'badge-admin' : 'badge-tech'}">${u.role}</span></td>
+              <td>
+                <span class="user-phone" data-uid="${u.id}">${escHtml(u.phone || '—')}</span>
+                <button class="btn btn-ghost btn-sm" data-uid="${u.id}" data-action="phone" style="margin-left:6px">Edit</button>
+              </td>
               <td class="action-btns">
                 ${u.id !== currentUser?.id ? `
-                  <button class="btn btn-danger btn-sm" data-uid="${u.id}">Remove</button>
+                  <button class="btn btn-danger btn-sm" data-uid="${u.id}" data-action="remove">Remove</button>
                 ` : '<span style="font-size:12px;color:var(--gray-400)">You</span>'}
               </td>
             </tr>`).join('')}
         </tbody>
       </table>`;
-    container.querySelectorAll('[data-uid]').forEach(btn => {
+    container.querySelectorAll('[data-action="remove"]').forEach(btn => {
       btn.addEventListener('click', async () => {
         if (!confirm(`Remove user? This cannot be undone.`)) return;
         await fetch(`/api/users/${btn.dataset.uid}`, { method: 'DELETE' });
         showToast('User removed.', 'success');
         loadAdminUsers();
+      });
+    });
+    container.querySelectorAll('[data-action="phone"]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const current = container.querySelector(`.user-phone[data-uid="${btn.dataset.uid}"]`)?.textContent;
+        const val = prompt('Enter phone number (e.g. 555-867-5309):', current === '—' ? '' : current);
+        if (val === null) return;
+        const res = await fetch(`/api/users/${btn.dataset.uid}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: val.trim() || null }),
+        });
+        if (res.ok) { showToast('Phone updated.', 'success'); loadAdminUsers(); }
+        else showToast('Failed to update phone.', 'error');
       });
     });
   } catch {
@@ -534,19 +552,21 @@ async function addUser() {
   const username = document.getElementById('new-username').value.trim();
   const password = document.getElementById('new-user-password').value;
   const role     = document.getElementById('new-user-role').value;
+  const phone    = document.getElementById('new-user-phone').value.trim();
   if (!name || !username || !password) { showToast('Name, username, and password are required.', 'error'); return; }
   if (password.length < 6) { showToast('Password must be at least 6 characters.', 'error'); return; }
   try {
     const res = await fetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, username, password, role }),
+      body: JSON.stringify({ name, username, password, role, phone: phone || undefined }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     document.getElementById('new-user-name').value = '';
     document.getElementById('new-username').value = '';
     document.getElementById('new-user-password').value = '';
+    document.getElementById('new-user-phone').value = '';
     loadAdminUsers();
     showToast(`User "${name}" added.`, 'success');
   } catch (err) {
