@@ -187,10 +187,9 @@ function populateJobDropdown(id, includeAll = false) {
 async function handleSubmit(e) {
   e.preventDefault();
 
-  const job_id       = document.getElementById('job-select').value;
-  const report_date  = document.getElementById('report-date').value;
-  const hours_worked = document.getElementById('hours-worked').value;
-  const notes        = document.getElementById('notes').value.trim();
+  const job_id      = document.getElementById('job-select').value;
+  const report_date = document.getElementById('report-date').value;
+  const notes       = document.getElementById('notes').value.trim();
 
   let valid = true;
   [['job-select', job_id], ['report-date', report_date], ['notes', notes]].forEach(([id, val]) => {
@@ -201,7 +200,6 @@ async function handleSubmit(e) {
   if (!valid) { showToast('Please fill in all required fields.', 'error'); return; }
 
   const payload = { job_id, report_date, notes };
-  if (hours_worked) payload.hours_worked = hours_worked;
 
   const btn = document.querySelector('#report-form .btn-primary');
   btn.disabled = true;
@@ -294,7 +292,6 @@ function renderReports(reports, container) {
           <div class="report-meta">
             <span class="report-tech-name">${escHtml(r.tech_name)}</span>
             <span class="tag tag-green">${escHtml(formatDate(r.report_date))}</span>
-            ${r.hours_worked != null ? `<span class="tag tag-gray">${r.hours_worked} hrs</span>` : ''}
           </div>
           <div class="report-job">${escHtml(r.job_number)} — ${escHtml(r.job_name)}</div>
         </div>

@@ -202,22 +202,22 @@ app.get('/api/reports', async (req, res) => {
 });
 
 app.post('/api/reports', async (req, res) => {
-  const { job_id, report_date, hours_worked, notes } = req.body;
+  const { job_id, report_date, notes } = req.body;
   if (!job_id || !report_date || !notes) {
     return res.status(400).json({ error: 'job_id, report_date, and notes are required' });
   }
   try {
     const { rows: [report] } = await pool.query(`
       WITH ins AS (
-        INSERT INTO reports (user_id, tech_name, job_id, report_date, hours_worked, notes)
-        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *
+        INSERT INTO reports (user_id, tech_name, job_id, report_date, notes)
+        VALUES ($1, $2, $3, $4, $5) RETURNING *
       )
-      SELECT ins.id, ins.tech_name, ins.report_date, ins.hours_worked, ins.notes, ins.created_at,
+      SELECT ins.id, ins.tech_name, ins.report_date, ins.notes, ins.created_at,
              j.job_number, j.job_name
       FROM ins JOIN jobs j ON ins.job_id = j.id
     `, [
       req.session.userId, req.session.name, Number(job_id),
-      report_date, hours_worked ? Number(hours_worked) : null, notes,
+      report_date, notes,
     ]);
     report.photos = [];
     res.status(201).json(report);
