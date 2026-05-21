@@ -49,20 +49,28 @@ if (userCount.count === 0) {
   console.log('  Change this password from the Admin panel after first login.\n');
 }
 
-// Seed placeholder jobs if none exist
+// Seed active jobs if none exist
 const jobCount = db.prepare('SELECT COUNT(*) as count FROM jobs').get();
 if (jobCount.count === 0) {
   const insert = db.prepare('INSERT INTO jobs (job_number, job_name) VALUES (?, ?)');
   const seed = db.transaction(() => {
     [
-      ['J-1001', 'Commercial Office Build-Out — Suite 400'],
-      ['J-1002', 'Residential HVAC Install — 123 Oak St'],
-      ['J-1003', 'Industrial Electrical Upgrade — Warehouse B'],
-      ['J-1004', 'New Construction — Riverside Apartments'],
-      ['J-1005', 'Preventive Maintenance — Downtown Complex'],
-      ['J-1006', 'Service Call — Metro Building'],
-      ['J-1007', 'Parking Structure Retrofit — Level 2'],
-      ['J-1008', 'Restaurant Fit-Out — Market St'],
+      ['03-23010B', 'AWE CBMAA PH II'],
+      ['03-24007B', 'ARDOT Multi Site Upgrades'],
+      ['03-24010B', 'Hotel Vin Rogers'],
+      ['03-24014B', 'P&W Springdale PH I'],
+      ['03-24017B', 'ARDOT Welcome Center Gravette'],
+      ['03-24022B', 'CN Pocola Casino Retrofit PH II'],
+      ['03-24023B', 'WM Project Mockingbird Robinson, TX BMS Install'],
+      ['03-25002B', 'WM DC 6031 Buckeye AZ'],
+      ['03-25008B', 'Tapestry Hotel Springdale'],
+      ['03-25011B', 'Jones Center JTL Retrofit'],
+      ['03-25012B', 'AWE AWSOM Campus Housing'],
+      ['03-25013B', 'AWE CBMAA Renovation Controls Retrofit'],
+      ['03-25015B', 'Catalyst Church New Bldg. Bentonville'],
+      ['03-26001B', 'WM Buckeye AZ Air Farm'],
+      ['03-26002B', 'IBC TSSA 2/1/26-1/31/27'],
+      ['03-26003B', 'CANTEX, Inc. Nashville, AR'],
     ].forEach(([num, name]) => insert.run(num, name));
   });
   seed();
