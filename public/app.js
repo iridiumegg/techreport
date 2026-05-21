@@ -606,16 +606,11 @@ async function openSummaryModal() {
   const jobId    = document.getElementById('filter-job')?.value;
   const dateFrom = document.getElementById('filter-date')?.value;
 
-  if (!jobId) {
-    showToast('Select a job from the filter first to generate a summary.', 'error');
-    return;
-  }
-
   const modal = document.getElementById('summary-modal');
   const content = document.getElementById('summary-content');
   const scope = document.getElementById('summary-scope');
 
-  const jobLabel = document.getElementById('filter-job')?.selectedOptions[0]?.text || '';
+  const jobLabel = jobId ? document.getElementById('filter-job')?.selectedOptions[0]?.text : 'All Jobs';
   const dateLabel = dateFrom ? ` · ${formatDate(dateFrom)}` : '';
   scope.textContent = jobLabel + dateLabel;
 

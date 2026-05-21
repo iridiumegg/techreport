@@ -385,11 +385,11 @@ app.post('/api/summarize', requireAdmin, async (req, res) => {
   if (!aiEnabled) return res.status(503).json({ error: 'AI summarization is not configured' });
 
   const { job_id, date_from, date_to } = req.body;
-  if (!job_id) return res.status(400).json({ error: 'job_id is required' });
 
   // Fetch reports for the requested scope
-  const params = [job_id];
-  let where = 'WHERE r.job_id = $1';
+  const params = [];
+  let where = 'WHERE 1=1';
+  if (job_id)    { params.push(job_id);    where += ` AND r.job_id = $${params.length}`; }
   if (date_from) { params.push(date_from); where += ` AND r.report_date >= $${params.length}`; }
   if (date_to)   { params.push(date_to);   where += ` AND r.report_date <= $${params.length}`; }
 
@@ -414,7 +414,7 @@ app.post('/api/summarize', requireAdmin, async (req, res) => {
     `Date: ${r.report_date}\nTechnician: ${r.tech_name}\n${r.notes}`
   ).join('\n\n---\n\n');
 
-  const jobLabel = `${reports[0].job_number} — ${reports[0].job_name}`;
+  const jobLabel = job_id ? `${reports[0].job_number} — ${reports[0].job_name}` : 'All Job Sites';
 
   // Stream the response as SSE
   res.setHeader('Content-Type', 'text/event-stream');
@@ -436,7 +436,7 @@ app.post('/api/summarize', requireAdmin, async (req, res) => {
       messages: [
         {
           role: 'user',
-          content: `Please summarize the following field reports for job site **${jobLabel}**. Provide a brief executive overview followed by key points organized by theme (work completed, issues/blockers, materials, progress, next steps). Use markdown formatting.\n\n${reportText}`,
+          content: `Please summarize the following field reports for **${jobLabel}**. Provide a brief executive overview followed by key points organized by theme (work completed, issues/blockers, materials, progress, next steps). Use markdown formatting.\n\n${reportText}`,
         },
       ],
     });
