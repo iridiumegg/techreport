@@ -183,10 +183,9 @@ app.get('/api/reports', async (req, res) => {
   const params = [];
   let where = 'WHERE 1=1';
 
-  if (!isAdmin) { params.push(req.session.userId); where += ` AND r.user_id = $${params.length}`; }
-  if (job_id)   { params.push(job_id);             where += ` AND r.job_id = $${params.length}`; }
-  if (date)     { params.push(date);               where += ` AND r.report_date = $${params.length}`; }
-  if (tech && isAdmin) { params.push(`%${tech}%`); where += ` AND r.tech_name ILIKE $${params.length}`; }
+  if (job_id) { params.push(job_id);         where += ` AND r.job_id = $${params.length}`; }
+  if (date)   { params.push(date);           where += ` AND r.report_date = $${params.length}`; }
+  if (tech)   { params.push(`%${tech}%`);   where += ` AND r.tech_name ILIKE $${params.length}`; }
 
   try {
     const { rows } = await pool.query(`
